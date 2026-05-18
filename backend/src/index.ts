@@ -2,8 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
 import dotenv from 'dotenv';
-import { db, initDB } from './config/db.js';
-import { redis } from './config/redis.js';
+import { initDB } from './config/db.js';
 import { startClickWorker } from './config/queue.js';
 import { authRouter, linksRouter, publicStatsRouter } from './routes/index.js';
 import { redirect } from './controllers/redirectController.js';
@@ -35,15 +34,6 @@ app.get('/:slug', redirect);
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
   try {
-    console.log('Connecting to Redis...');
-    await redis.connect();
-    console.log('✅ Redis connected');
-  } catch (err) {
-    console.error('❌ Redis failed:', err);
-    process.exit(1);
-  }
-
-  try {
     console.log('Connecting to DB...');
     await initDB();
     console.log('✅ Database initialized');
@@ -72,5 +62,4 @@ boot().catch((err) => {
   console.error('Boot failed:', err);
   process.exit(1);
 });
-
 export default app;
