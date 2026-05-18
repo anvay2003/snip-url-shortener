@@ -34,14 +34,35 @@ app.get('/:slug', redirect);
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
-  await redis.connect();
-  await initDB();
-  startClickWorker();
-  const server = app.listen(PORT, () => console.log(`🚀 Server on http://localhost:${PORT}`));
-  
+  try {
+    console.log('Connecting to Redis...');
+    await redis.connect();
+    console.log('✅ Redis connected');
+  } catch (err) {
+    console.error('❌ Redis failed:', err);
+    process.exit(1);
+  }
+
+  try {
+    console.log('Connecting to DB...');
+    await initDB();
+    console.log('✅ Database initialized');
+  } catch (err) {
+    console.error('❌ DB failed:', err);
+    process.exit(1);
+  }
+
+  try {
+    startClickWorker();
+    console.log('✅ Click worker started');
+  } catch (err) {
+    console.error('❌ Worker failed:', err);
+  }
+
+  const server = app.listen(PORT, () => console.log(`🚀 Server on port ${PORT}`));
   server.on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`❌ Port ${PORT} in use. Run: lsof -ti:${PORT} | xargs kill -9`);
+      console.error(`❌ Port ${PORT} in use`);
       process.exit(1);
     }
   });
