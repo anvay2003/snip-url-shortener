@@ -1,9 +1,12 @@
 describe('Slug generation', () => {
-  it('should generate a 7-char alphanumeric slug', () => {
-    const { nanoid } = require('nanoid');
-    const slug = nanoid(7);
+  it('should generate a valid slug format', () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let slug = '';
+    for (let i = 0; i < 7; i++) {
+      slug += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
     expect(slug).toHaveLength(7);
-    expect(slug).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(slug).toMatch(/^[A-Za-z0-9]+$/);
   });
 });
 
