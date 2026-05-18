@@ -13,7 +13,7 @@ export function LinkCard({ link, onDelete, onCopied }: {
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
 
-  const shortUrl = link.shortUrl || link.short_url || `${process.env.NEXT_PUBLIC_API_URL}/${link.slug}`;
+  const shortUrl = link.shortUrl || `${process.env.NEXT_PUBLIC_API_URL}/${link.slug}`;
   const displaySlug = shortUrl.split('/').pop();
 
   async function copy() {
