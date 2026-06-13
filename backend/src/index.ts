@@ -13,6 +13,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+app.get('/health', (_req, res) => res.status(200).json({ status: 'ok', ts: new Date().toISOString() }));
+
 app.set('trust proxy', 1);
 app.use(cors({
   origin: [process.env.FRONTEND_URL || 'http://localhost:3000', 'http://localhost:3000', 'http://localhost:3002'],
@@ -23,7 +25,6 @@ app.use(express.json());
 app.use(globalRateLimit);
 
 // ── Routes ────────────────────────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 app.use('/api/auth', authRouter);
 app.use('/api/links', linksRouter);
 app.use('/api/stats', publicStatsRouter);
