@@ -24,7 +24,12 @@ export function globalRateLimit(req: Request, res: Response, next: NextFunction)
   globalLimiter
     .consume(req.ip || 'unknown')
     .then(() => next())
-    .catch(() => {
+    .catch((err) => {
+      if (err instanceof Error) {
+        // Redis error, not a rate-limit rejection — fail open
+        console.error('Rate limiter error, failing open:', err.message);
+        return next();
+      }
       res.set('Retry-After', '60');
       res.status(429).json({ error: 'Too many requests. Slow down.' });
     });
@@ -35,7 +40,11 @@ export function shortenRateLimit(req: Request, res: Response, next: NextFunction
   shortenLimiter
     .consume(key)
     .then(() => next())
-    .catch(() => {
+    .catch((err) => {
+      if (err instanceof Error) {
+        console.error('Rate limiter error, failing open:', err.message);
+        return next();
+      }
       res.set('Retry-After', '120');
       res.status(429).json({ error: 'Shorten limit reached. Max 10 links/min.' });
     });
