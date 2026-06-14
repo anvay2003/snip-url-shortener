@@ -12,6 +12,16 @@ const createSchema = z.object({
   expiresAt: z.string().datetime().optional(),
 });
 
+// Wrap any Redis op so a flaky cache never breaks the request
+async function safeRedis<T>(fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (err: any) {
+    console.error('Redis op failed (continuing without cache):', err.message);
+    return null;
+  }
+}
+
 export async function createLink(req: AuthRequest, res: Response) {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
@@ -19,7 +29,6 @@ export async function createLink(req: AuthRequest, res: Response) {
   const { url, title, expiresAt } = parsed.data;
   const slug = parsed.data.slug || nanoid(7);
 
-  // Check slug collision
   const existing = await db.query('SELECT id FROM links WHERE slug = $1', [slug]);
   if (existing.rows.length > 0) return res.status(409).json({ error: 'Slug already taken' });
 
@@ -32,11 +41,9 @@ export async function createLink(req: AuthRequest, res: Response) {
 
   const link = result.rows[0];
 
-  // Warm the cache immediately
-  await redis.set(CACHE_KEYS.slug(slug), url, 'EX', CACHE_TTL.slug);
-
-  // Invalidate user links cache
-  await redis.del(CACHE_KEYS.userLinks(req.userId!));
+  // Cache writes — fail silently if Redis is down
+  await safeRedis(() => redis.set(CACHE_KEYS.slug(slug), url, 'EX', CACHE_TTL.slug));
+  await safeRedis(() => redis.del(CACHE_KEYS.userLinks(req.userId!)));
 
   res.status(201).json({
     ...link,
@@ -46,8 +53,14 @@ export async function createLink(req: AuthRequest, res: Response) {
 
 export async function getLinks(req: AuthRequest, res: Response) {
   const cacheKey = CACHE_KEYS.userLinks(req.userId!);
-  const cached = await redis.get(cacheKey);
-  if (cached) return res.json(JSON.parse(cached));
+  const cached = await safeRedis(() => redis.get(cacheKey));
+  if (cached) {
+    try {
+      return res.json(JSON.parse(cached));
+    } catch {
+      // fall through to DB if cache value is corrupt
+    }
+  }
 
   const result = await db.query(
     `SELECT id, slug, original_url, title, expires_at, click_count, created_at
@@ -60,7 +73,7 @@ export async function getLinks(req: AuthRequest, res: Response) {
     shortUrl: `${process.env.BASE_URL}/${l.slug}`,
   }));
 
-  await redis.set(cacheKey, JSON.stringify(links), 'EX', CACHE_TTL.userLinks);
+  await safeRedis(() => redis.set(cacheKey, JSON.stringify(links), 'EX', CACHE_TTL.userLinks));
   res.json(links);
 }
 
@@ -75,8 +88,8 @@ export async function deleteLink(req: AuthRequest, res: Response) {
   if (result.rows.length === 0) return res.status(404).json({ error: 'Link not found' });
 
   const { slug } = result.rows[0];
-  await redis.del(CACHE_KEYS.slug(slug));
-  await redis.del(CACHE_KEYS.userLinks(req.userId!));
+  await safeRedis(() => redis.del(CACHE_KEYS.slug(slug)));
+  await safeRedis(() => redis.del(CACHE_KEYS.userLinks(req.userId!)));
 
   res.status(204).send();
 }
@@ -84,13 +97,18 @@ export async function deleteLink(req: AuthRequest, res: Response) {
 export async function getLinkAnalytics(req: AuthRequest, res: Response) {
   const { id } = req.params;
 
-  // Verify ownership
   const link = await db.query('SELECT id, slug, click_count FROM links WHERE id = $1 AND user_id = $2', [id, req.userId]);
   if (link.rows.length === 0) return res.status(404).json({ error: 'Link not found' });
 
   const cacheKey = CACHE_KEYS.analytics(id);
-  const cached = await redis.get(cacheKey);
-  if (cached) return res.json(JSON.parse(cached));
+  const cached = await safeRedis(() => redis.get(cacheKey));
+  if (cached) {
+    try {
+      return res.json(JSON.parse(cached));
+    } catch {
+      // fall through
+    }
+  }
 
   const [devices, browsers, referers, timeline] = await Promise.all([
     db.query(
@@ -122,6 +140,6 @@ export async function getLinkAnalytics(req: AuthRequest, res: Response) {
     timeline: timeline.rows,
   };
 
-  await redis.set(cacheKey, JSON.stringify(analytics), 'EX', CACHE_TTL.analytics);
+  await safeRedis(() => redis.set(cacheKey, JSON.stringify(analytics), 'EX', CACHE_TTL.analytics));
   res.json(analytics);
 }

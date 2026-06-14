@@ -3,24 +3,25 @@ import { db } from '../config/db.js';
 import { redis, CACHE_KEYS, CACHE_TTL } from '../config/redis.js';
 import { enqueueClick } from '../config/queue.js';
 
+async function safeRedis<T>(fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (err: any) {
+    console.error('Redis op failed (continuing without cache):', err.message);
+    return null;
+  }
+}
+
 export async function redirect(req: Request, res: Response) {
   const { slug } = req.params;
   const start = Date.now();
 
-  // ── 1. Cache hit (the hot path, ~2ms) ────────────────────────────────────
-  const cached = await redis.get(CACHE_KEYS.slug(slug));
+  // ── 1. Cache hit (the hot path) ──────────────────────────────────────────
+  const cached = await safeRedis(() => redis.get(CACHE_KEYS.slug(slug)));
   if (cached) {
     res.set('X-Cache', 'HIT');
     res.set('X-Response-Time', `${Date.now() - start}ms`);
 
-    await enqueueClick({
-      linkId: '', // populated below from DB only on cache miss
-      ip: req.ip || '',
-      userAgent: req.headers['user-agent'] || '',
-      referer: req.headers['referer'] || '',
-    });
-
-    // Get link id async for the queue (fire-and-forget)
     db.query('SELECT id FROM links WHERE slug = $1', [slug])
       .then(async (r) => {
         if (r.rows[0]) {
@@ -29,10 +30,10 @@ export async function redirect(req: Request, res: Response) {
             ip: req.ip || '',
             userAgent: req.headers['user-agent'] || '',
             referer: req.headers['referer'] || '',
-          });
+          }).catch(() => {});
         }
       })
-      .catch(() => {}); // never block the redirect
+      .catch(() => {});
 
     return res.redirect(301, cached);
   }
@@ -53,10 +54,8 @@ export async function redirect(req: Request, res: Response) {
     return res.status(410).json({ error: 'Link has expired' });
   }
 
-  // Warm cache
-  await redis.set(CACHE_KEYS.slug(slug), link.original_url, 'EX', CACHE_TTL.slug);
+  await safeRedis(() => redis.set(CACHE_KEYS.slug(slug), link.original_url, 'EX', CACHE_TTL.slug));
 
-  // Enqueue click event async — never blocks redirect
   enqueueClick({
     linkId: link.id,
     ip: req.ip || '',
