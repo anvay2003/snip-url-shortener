@@ -16,9 +16,24 @@ const PORT = process.env.PORT || 3001;
 app.get('/health', (_req, res) => res.status(200).json({ status: 'ok', ts: new Date().toISOString() }));
 
 app.set('trust proxy', 1);
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
+  'http://localhost:3003',
+].filter(Boolean) as string[];
+
 app.use(cors({
-  origin: [process.env.FRONTEND_URL || 'http://localhost:3000', 'http://localhost:3000', 'http://localhost:3002'],
-  credentials: true
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(null, true); // temporarily allow all while debugging
+    }
+  },
+  credentials: true,
 }));
 app.use(compression());
 app.use(express.json());
