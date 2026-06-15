@@ -29,6 +29,10 @@ export const clickQueue = new Queue('click-events', {
   },
 });
 
+clickQueue.on('error', (err) => {
+  console.error('Queue error (non-fatal):', err.message);
+});
+
 export interface ClickJobData {
   linkId: string;
   ip: string;

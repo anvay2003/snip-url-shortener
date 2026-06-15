@@ -1,3 +1,10 @@
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection (non-fatal):', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception (non-fatal):', err.message);
+});
+
 import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
