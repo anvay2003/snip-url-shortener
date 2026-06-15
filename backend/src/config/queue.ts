@@ -1,13 +1,26 @@
-import { Queue, Worker, QueueEvents } from 'bullmq';
-import { redis } from './redis.js';
+import { Queue, Worker } from 'bullmq';
+import { Redis } from 'ioredis';
 import { db } from './db.js';
 import UAParser from 'ua-parser-js';
+import dotenv from 'dotenv';
 
-const connection = { host: redis.options.host || 'localhost', port: Number(redis.options.port) || 6379 };
+dotenv.config();
+
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+const isRediss = redisUrl.startsWith('rediss://');
+
+// BullMQ requires its own Redis connection with maxRetriesPerRequest: null
+function createBullConnection() {
+  return new Redis(redisUrl, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    ...(isRediss ? { tls: { rejectUnauthorized: false } } : {}),
+  });
+}
 
 // ─── Queue ────────────────────────────────────────────────────────────────────
 export const clickQueue = new Queue('click-events', {
-  connection,
+  connection: createBullConnection(),
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 1000 },
@@ -24,9 +37,13 @@ export interface ClickJobData {
 }
 
 export async function enqueueClick(data: ClickJobData) {
-  await clickQueue.add('click', data, {
-    jobId: `click-${data.linkId}-${Date.now()}`, // idempotency prefix
-  });
+  try {
+    await clickQueue.add('click', data, {
+      jobId: `click-${data.linkId}-${Date.now()}`,
+    });
+  } catch (err: any) {
+    console.error('Failed to enqueue click (non-fatal):', err.message);
+  }
 }
 
 // ─── Worker ───────────────────────────────────────────────────────────────────
@@ -51,14 +68,17 @@ export function startClickWorker() {
         ]
       );
 
-      // Increment counter atomically
       await db.query(`UPDATE links SET click_count = click_count + 1 WHERE id = $1`, [linkId]);
     },
     {
-      connection,
+      connection: createBullConnection(),
       concurrency: 10,
     }
   );
+
+  worker.on('error', (err) => {
+    console.error('Worker error (non-fatal):', err.message);
+  });
 
   worker.on('failed', (job, err) => {
     console.error(`Click job ${job?.id} failed:`, err.message);
