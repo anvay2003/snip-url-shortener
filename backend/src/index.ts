@@ -33,15 +33,18 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log('CORS blocked origin:', origin);
-      callback(null, true); // temporarily allow all while debugging
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Allow any Vercel preview deployment for this project
+    if (/^https:\/\/snip-url-shortener-[a-z0-9]+-anvay-s-projects02\.vercel\.app$/.test(origin)) {
+      return callback(null, true);
     }
+    console.log('CORS blocked origin:', origin);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
 }));
+
 app.use(compression());
 app.use(express.json());
 app.use(globalRateLimit);
