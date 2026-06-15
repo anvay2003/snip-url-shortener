@@ -23,27 +23,7 @@ const PORT = process.env.PORT || 3001;
 app.get('/health', (_req, res) => res.status(200).json({ status: 'ok', ts: new Date().toISOString() }));
 
 app.set('trust proxy', 1);
-const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://localhost:3002',
-  'http://localhost:3003',
-].filter(Boolean) as string[];
-
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    // Allow any Vercel preview deployment for this project
-    if (/^https:\/\/snip-url-shortener-[a-z0-9]+-anvay-s-projects02\.vercel\.app$/.test(origin)) {
-      return callback(null, true);
-    }
-    console.log('CORS blocked origin:', origin);
-    callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-}));
+app.use(cors());
 
 app.use(compression());
 app.use(express.json());
