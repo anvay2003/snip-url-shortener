@@ -23,8 +23,10 @@ const PORT = process.env.PORT || 3001;
 app.get('/health', (_req, res) => res.status(200).json({ status: 'ok', ts: new Date().toISOString() }));
 
 app.set('trust proxy', 1);
-app.use(cors());
-
+app.use(cors({
+  origin: process.env.FRONTEND_URL,
+  credentials: true,
+}));
 app.use(compression());
 app.use(express.json());
 app.use(globalRateLimit);

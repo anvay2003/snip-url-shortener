@@ -3,5 +3,7 @@ dist/
 .next/
 .env
 *.env.local
+frontend/.env
+backend/.env
 .DS_Store
 coverage/
